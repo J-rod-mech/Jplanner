@@ -11,9 +11,10 @@ import static com.example.jplanner.Planner.DELIM;
 
 import android.content.Context;
 
+import androidx.compose.runtime.snapshots.SnapshotStateList;
+
 public class FileManager {
     public static void readFile(Context context) {
-        Planner.tasks = new ArrayList<Task>();
         File dir = new File(context.getFilesDir(), "daily");
         if (!dir.exists()) {
             dir.mkdirs();
@@ -43,7 +44,6 @@ public class FileManager {
     }
     
     public static void writeFile(Context context) {
-        Planner.tasks = new ArrayList<Task>();
         File dir = new File(context.getFilesDir(), "daily");
         if (!dir.exists()) {
             dir.mkdirs();

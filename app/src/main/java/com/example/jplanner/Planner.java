@@ -16,6 +16,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.ResolverStyle;
 import java.io.File;
 import java.util.Arrays;
+import androidx.compose.runtime.snapshots.SnapshotStateList;
 
 public class Planner {
     //constants
@@ -105,10 +106,10 @@ public class Planner {
 
     static DateTimeFormatter myFormat = DateTimeFormatter.ofPattern("MM-dd-uuuu").withResolverStyle(ResolverStyle.STRICT);
     static String zonedDate = ZonedDateTime.now(ZoneId.of(timeZone)).format(myFormat);
-    static ArrayList<Task> tasks = new ArrayList<Task>();
+    static SnapshotStateList<Task> tasks = MainActivity.list.getTasks();
 
-    public static void testFunc1(String str) {
-        tasks.add(new Task(str, " ", 2, 3));
+    public static Task testFunc1(String str) {
+        return new Task(str, "", 1, 2);
     }
     public static void testFunc2(Context context) {
         tasks.add(new Task("test", " ", 1, 2));
