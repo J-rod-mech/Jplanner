@@ -166,8 +166,8 @@ public class HabitManager {
                     }
                     if (fileSC.hasNext()) {
                         fileSC.next();
-                        out += DELIM;
                     }
+                    out += DELIM;
                 }
             }
         }
