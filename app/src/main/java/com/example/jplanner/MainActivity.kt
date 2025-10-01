@@ -5,6 +5,7 @@ import android.R.attr.label
 import android.R.attr.text
 import android.graphics.drawable.Icon
 import android.os.Bundle
+import android.text.format.DateUtils
 import android.widget.Button
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -38,13 +39,18 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.platform.LocalContext
 import java.io.File
 import androidx.compose.material3.Surface
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -54,15 +60,22 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ModifierLocalBeyondBoundsLayout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.PreviewParameter
 import androidx.compose.ui.unit.Dp
-import kotlin.reflect.typeOf
+import java.time.LocalDate
+import java.time.ZoneId
+import java.util.Locale
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material3.DatePickerState
+import androidx.compose.material3.OutlinedTextField
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.concurrent.TimeUnit
 
 class MainActivity : ComponentActivity() {
     companion object {
@@ -85,6 +98,89 @@ class MainActivity : ComponentActivity() {
 
 class MyTasks {
     val tasks = mutableStateListOf<Task>()
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MaterialDatePicker(
+    placeholderText: String,
+    selectedDateMillis: Long,
+    onDateSelected: (Long) -> Unit,
+) {
+    var isDatePickerVisible by remember { mutableStateOf(false) }
+    val datePickerState = rememberDatePickerState(initialSelectedDateMillis = selectedDateMillis)
+    val selectedDateText = (datePickerState.selectedDateMillis?.plus(TimeUnit.DAYS.toMillis(1)))?.let {
+        formatDate(it, "MMM dd, yyyy")
+    } ?: ""
+
+    Box(modifier = Modifier.fillMaxWidth()) {
+        OutlinedTextField(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(64.dp),
+            value = selectedDateText,
+            onValueChange = {},
+            label = { Text(placeholderText) },
+            readOnly = true,
+            trailingIcon = {
+                IconButton(onClick = { isDatePickerVisible = !isDatePickerVisible }) {
+                    Icon(imageVector = Icons.Default.DateRange, contentDescription = "Select date")
+                }
+            }
+        )
+
+        if (isDatePickerVisible) {
+            DatePickerDialog(
+                datePickerState = datePickerState,
+                onDateSelected = {
+                    onDateSelected(it ?: 0)
+                },
+                onDismiss = { isDatePickerVisible = false },
+                tempDate = selectedDateMillis
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DatePickerDialog(
+    datePickerState: DatePickerState,
+    onDateSelected: (Long?) -> Unit,
+    onDismiss: () -> Unit,
+    tempDate: Long
+) {
+    DatePickerDialog(
+        onDismissRequest = {
+            datePickerState.selectedDateMillis = tempDate
+                           },
+        confirmButton = {
+            TextButton(onClick = {
+                onDateSelected(datePickerState.selectedDateMillis)
+                onDismiss()
+            }) {
+                Text("OK")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = {
+                onDismiss()
+                datePickerState.selectedDateMillis = tempDate
+            }) {
+                Text("Cancel")
+            }
+        }
+    ) {
+        DatePicker(
+            state = datePickerState,
+            showModeToggle = false
+        )
+    }
+}
+
+fun formatDate(millis: Long, pattern: String = "MM-dd-yyyy"): String {
+    val formatter = SimpleDateFormat(pattern, Locale.ENGLISH)
+    return formatter.format(Date(millis))
 }
 
 @Preview
@@ -187,6 +283,7 @@ fun addTask(modifier: Modifier = Modifier) {
 }
 */
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Preview
 @Composable
 fun editTaskScreen(modifier: Modifier = Modifier) {
@@ -198,7 +295,7 @@ fun editTaskScreen(modifier: Modifier = Modifier) {
         var endHour by remember { mutableStateOf(12) }
         var endMin by remember { mutableStateOf(0) }
         var endXM by remember { mutableStateOf("AM") }
-        print("hello")
+        var date by remember { mutableStateOf(0L) }
         Column {
             TextField(
                 value = name,
@@ -340,7 +437,45 @@ fun editTaskScreen(modifier: Modifier = Modifier) {
                     }
                 }
             }
+
+            val todayMillis = LocalDate.now()
+                .atStartOfDay(ZoneId.of(Planner.timeZone))
+                .toInstant()
+                .toEpochMilli()
+            val selectedDate = remember { mutableLongStateOf(todayMillis) }
+
+            MaterialDatePicker(
+                placeholderText = "Date",
+                selectedDateMillis = selectedDate.value,
+                onDateSelected = { date ->
+                    selectedDate.value = date
+                },
+            )
         }
+    }
+}
+
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DatePickerModal(
+    onDateSelected: (Long?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val datePickerState = rememberDatePickerState()
+
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = {
+                onDateSelected(datePickerState.selectedDateMillis)
+                onDismiss()
+            }) {
+                Text("OK")
+            }
+        },
+    ) {
+        DatePicker(state = datePickerState)
     }
 }
 
