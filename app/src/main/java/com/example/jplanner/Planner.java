@@ -193,29 +193,20 @@ public class Planner {
         return slot / HUNDRED_DIV * QUAD + slot % HUNDRED_DIV / FIFTEEN_DIV;
     }
 
-    public static String convertNumToTime(int start, int end) {
+    public static String convertNumToTime(int num) {
         String out = "";
-        out += (HALF_HOURS - (HOUR_OFFSET + MAX_HOUR - start) / QUAD
-                % HALF_HOURS) + ":" + (start * FIFTEEN_DIV % HOUR_DIV);
-        if (start % QUAD == 0)
-            out += "0";
-        if (start / HALF_HOURS / QUAD % 2 == 0)
-            out += " A";
-        else
-            out += " P";
-        out += "M-";
-        out += (HALF_HOURS - (HOUR_OFFSET + MAX_HOUR - end) / QUAD
-                % HALF_HOURS) + ":" + (end * FIFTEEN_DIV % HOUR_DIV);
-        if (end % QUAD == 0)
-            out += "0";
-        if (end / HALF_HOURS / QUAD % 2 == 0)
-            out += " A";
-        else
-            out += " P";
-        out += "M";
-
+        int hour = (num % (HALF_HOURS * HOUR_DIV)) / HOUR_DIV;
+        int min = num % HOUR_DIV;
+        out += (hour > 0 ? hour: 12) + ":" + String.format("%02d", min);
+        if (num >= HALF_HOURS * HOUR_DIV) {
+            out += " PM";
+        }
+        else {
+            out += " AM";
+        }
         return out;
     }
+
     public static int convertInc(String time) {
         int slot = -1;
         try {
@@ -253,6 +244,10 @@ public class Planner {
         }
 
         return -1;
+    }
+
+    public static Task newTask(String name, String tag, int start, int end, String note) {
+        return new Task(name, tag, false, start, end, note);
     }
 
     public static void insertTask(String name, String tag, int start, int end) {

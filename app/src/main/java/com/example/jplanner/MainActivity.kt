@@ -12,6 +12,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import com.example.jplanner.ui.theme.JplannerTheme
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -73,6 +75,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material3.DatePickerState
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.ui.draw.clip
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.concurrent.TimeUnit
@@ -88,8 +91,10 @@ class MainActivity : ComponentActivity() {
         setContent {
             JplannerTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    //taskList(modifier = Modifier.padding(innerPadding), myTasks = list)
-                    editTaskScreen(modifier = Modifier.padding(innerPadding))
+                    MyApp(
+                        modifier = Modifier.padding(innerPadding),
+                        myTasks = list
+                    )
                 }
             }
         }
@@ -98,6 +103,24 @@ class MainActivity : ComponentActivity() {
 
 class MyTasks {
     val tasks = mutableStateListOf<Task>()
+}
+
+@Composable
+fun MyApp(modifier: Modifier = Modifier, myTasks: MyTasks) {
+    var showEditTaskScreen by remember { mutableStateOf(false) }
+    if (showEditTaskScreen) {
+        EditTaskScreen(
+            onContinueClicked = { showEditTaskScreen = false }
+        )
+    }
+    else {
+        taskList(
+            myTasks = myTasks,
+            onContinueClicked = {
+                showEditTaskScreen = true
+            }
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -117,14 +140,16 @@ fun MaterialDatePicker(
         OutlinedTextField(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(64.dp),
+                .height(76.dp)
+                .padding(8.dp)
+            ,
             value = selectedDateText,
             onValueChange = {},
             label = { Text(placeholderText) },
             readOnly = true,
             trailingIcon = {
                 IconButton(onClick = { isDatePickerVisible = !isDatePickerVisible }) {
-                    Icon(imageVector = Icons.Default.DateRange, contentDescription = "Select date")
+                    Icon(imageVector = Icons.Default.DateRange, contentDescription = "Select a date for your task:")
                 }
             }
         )
@@ -172,8 +197,7 @@ fun DatePickerDialog(
         }
     ) {
         DatePicker(
-            state = datePickerState,
-            showModeToggle = false
+            state = datePickerState
         )
     }
 }
@@ -207,12 +231,19 @@ fun previewTaskList(modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun taskList(modifier: Modifier = Modifier, myTasks: MyTasks) {
+fun taskList(modifier:
+             Modifier = Modifier,
+             myTasks: MyTasks,
+             onContinueClicked: () -> Unit
+) {
     val context = LocalContext.current
     Scaffold(
         modifier = Modifier
             .fillMaxSize(),
-        bottomBar = { readFile(myTasks = myTasks) }
+        bottomBar = { readFile(
+            myTasks = myTasks,
+            onContinueClicked = onContinueClicked
+        )}
     ) { innerPadding ->
         LazyColumn(
             modifier = Modifier
@@ -251,16 +282,29 @@ fun testReadFile(modifier: Modifier = Modifier, myTasks: MyTasks) {
     }
 }
 @Composable
-fun readFile(modifier: Modifier = Modifier, myTasks: MyTasks) {
+fun readFile(
+    modifier: Modifier = Modifier,
+    myTasks: MyTasks,
+    onContinueClicked: () -> Unit
+) {
     Surface(color = MaterialTheme.colorScheme.secondary) {
         val context = LocalContext.current
-        Button(
-            modifier = Modifier.background(MaterialTheme.colorScheme.secondary),
-            onClick = {
-                FileManager.readFile(context)
+        Row {
+            Button(
+                modifier = Modifier.background(MaterialTheme.colorScheme.secondary),
+                onClick = {
+                    FileManager.readFile(context)
+                }
+            ) {
+                Text("fetch schedule")
             }
-        ) {
-            Text("fetch schedule")
+            Spacer(modifier = Modifier.weight(1f))
+            Button(
+                modifier = Modifier.background(MaterialTheme.colorScheme.secondary),
+                onClick = onContinueClicked
+            ) {
+                Text("add task")
+            }
         }
     }
 }
@@ -284,34 +328,97 @@ fun addTask(modifier: Modifier = Modifier) {
 */
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Preview
 @Composable
-fun editTaskScreen(modifier: Modifier = Modifier) {
+fun EditTaskScreen(
+    modifier: Modifier = Modifier,
+    onContinueClicked: () -> Unit,
+    newName: String = "",
+    newStartHour: Int = 12,
+    newStartMin: Int = 0,
+    newStartXM: String = "AM",
+    newEndHour: Int = if (newStartHour < 12) (if (newStartHour == 11 && newStartXM == "PM") 11 else newStartHour + 1) else 1,
+    newEndMin: Int = if (newStartHour == 11 && newStartXM == "PM") 59 else newStartMin,
+    newEndXM: String = if (newStartHour != 11) newStartXM else "PM",
+    newNote: String = "",
+    editing: Boolean = false
+    ) {
     Surface() {
-        var name by remember { mutableStateOf("") }
-        var startHour by remember { mutableStateOf(12) }
-        var startMin by remember { mutableStateOf(0) }
-        var startXM by remember { mutableStateOf("AM") }
-        var endHour by remember { mutableStateOf(12) }
-        var endMin by remember { mutableStateOf(0) }
-        var endXM by remember { mutableStateOf("AM") }
-        var date by remember { mutableStateOf(0L) }
-        Column {
-            TextField(
+        var name by remember { mutableStateOf(newName) }
+        var startHour by remember { mutableStateOf(newStartHour) }
+        var startMin by remember { mutableStateOf(newStartMin) }
+        var startXM by remember { mutableStateOf(newStartXM) }
+        var endHour by remember { mutableStateOf(newEndHour) }
+        var endMin by remember { mutableStateOf(newEndMin) }
+        var endXM by remember { mutableStateOf(newEndXM) }
+        var note by remember { mutableStateOf(newNote) }
+        var nameError by remember { mutableStateOf(false) }
+        var nameDelimError by remember { mutableStateOf(false) }
+        var timeError by remember { mutableStateOf(false) }
+        var noteDelimError by remember { mutableStateOf(false) }
+        var nameEdit by remember { mutableStateOf(name != "") }
+        var canAdd by remember { mutableStateOf(false) }
+
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Spacer(modifier = Modifier.padding(16.dp))
+            Text(
+                text = "Add New Task:",
+                color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.titleLarge,
+                textAlign = TextAlign.Center
+            )
+            OutlinedTextField(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(76.dp)
+                    .padding(top = 8.dp, start = 8.dp, end = 8.dp),
                 value = name,
-                onValueChange = { name = it },
-                label = { Text("Name:") },
-                modifier = Modifier.fillMaxWidth()
+                onValueChange = {
+                    name = it
+                    nameError = name.trim() == ""
+                    nameDelimError = name.contains(Planner.DELIM)
+                    nameEdit = true
+                    canAdd = !(nameError || nameDelimError || timeError || noteDelimError)
+                                },
+                label = { Text("Name") },
+            )
+            if (nameError) {
+                Text(
+                    text = "Name must be filled.",
+                    color = Color.Red,
+                    modifier = Modifier.padding(start = 12.dp)
+                )
+            }
+            else if (nameDelimError) {
+                Text(
+                    text = "Name cannot include ${Planner.DELIM}.",
+                    color = Color.Red,
+                    modifier = Modifier.padding(start = 12.dp)
+                )
+            }
+            Spacer(modifier = Modifier
+                .width(8.dp)
+                .padding(top = 12.dp)
             )
             Row {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
-                        .padding(12.dp)
-                        .background(MaterialTheme.colorScheme.onPrimary)
+                        .clip(RoundedCornerShape(16.dp))
+                        .padding(top = 12.dp, start = 12.dp, end = 6.dp)
+                        .background(
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            shape = RoundedCornerShape(16.dp)
+                        )
+                        .border(
+                            width = 1.dp,
+                            color = Color.Gray,
+                            shape = RoundedCornerShape(16.dp)
+                        )
                 ) {
                     Text(
-                        text = "Start:",
+                        text = "Start",
                         textAlign = TextAlign.Center,
                         modifier = Modifier
                             .padding(8.dp)
@@ -319,6 +426,7 @@ fun editTaskScreen(modifier: Modifier = Modifier) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Spacer(modifier = Modifier.width(4.dp))
                         InfiniteCircularList(
                             width = 50.dp,
                             itemHeight = 40.dp,
@@ -330,6 +438,10 @@ fun editTaskScreen(modifier: Modifier = Modifier) {
                             selectedTextColor = MaterialTheme.colorScheme.primary,
                             onItemSelected = { i, item ->
                                 startHour = item
+                                val start: Int = (if (startHour < 12) startHour * 60 else 0) + startMin + (if (startXM == "PM") 720 else 0)
+                                val end: Int = (if (endHour < 12) endHour * 60 else 0) + endMin + (if (endXM == "PM") 720 else 0)
+                                timeError = start >= end
+                                canAdd = !(nameError || nameDelimError || timeError || noteDelimError) && nameEdit
                             }
                         )
                         Text(
@@ -350,9 +462,14 @@ fun editTaskScreen(modifier: Modifier = Modifier) {
                             selectedTextColor = MaterialTheme.colorScheme.primary,
                             onItemSelected = { i, item ->
                                 startMin = item
+                                val start: Int = (if (startHour < 12) startHour * 60 else 0) + startMin + (if (startXM == "PM") 720 else 0)
+                                val end: Int = (if (endHour < 12) endHour * 60 else 0) + endMin + (if (endXM == "PM") 720 else 0)
+                                timeError = start >= end
+                                canAdd = !(nameError || nameDelimError || timeError || noteDelimError) && nameEdit
                             }
                         )
-                        InfiniteCircularList(
+                        Spacer(modifier = Modifier.width(8.dp))
+                        CircularList(
                             width = 50.dp,
                             itemHeight = 30.dp,
                             numberOfDisplayedItems = 3,
@@ -364,8 +481,13 @@ fun editTaskScreen(modifier: Modifier = Modifier) {
                             selectedTextColor = MaterialTheme.colorScheme.primary,
                             onItemSelected = { i, item ->
                                 startXM = item
+                                val start: Int = (if (startHour < 12) startHour * 60 else 0) + startMin + (if (startXM == "PM") 720 else 0)
+                                val end: Int = (if (endHour < 12) endHour * 60 else 0) + endMin + (if (endXM == "PM") 720 else 0)
+                                timeError = start >= end
+                                canAdd = !(nameError || nameDelimError || timeError || noteDelimError) && nameEdit
                             }
                         )
+                        Spacer(modifier = Modifier.width(4.dp))
                     }
                 }
 
@@ -375,11 +497,20 @@ fun editTaskScreen(modifier: Modifier = Modifier) {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
-                        .padding(12.dp)
-                        .background(MaterialTheme.colorScheme.onPrimary)
+                        .clip(RoundedCornerShape(16.dp))
+                        .padding(top = 12.dp, start = 6.dp, end = 12.dp)
+                        .background(
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            shape = RoundedCornerShape(16.dp)
+                        )
+                        .border(
+                            width = 1.dp,
+                            color = Color.Gray,
+                            shape = RoundedCornerShape(16.dp)
+                        )
                 ) {
                     Text(
-                        text = "End:",
+                        text = "End",
                         textAlign = TextAlign.Center,
                         modifier = Modifier
                             .padding(8.dp)
@@ -387,6 +518,7 @@ fun editTaskScreen(modifier: Modifier = Modifier) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Spacer(modifier = Modifier.width(4.dp))
                         InfiniteCircularList(
                             width = 50.dp,
                             itemHeight = 40.dp,
@@ -398,6 +530,10 @@ fun editTaskScreen(modifier: Modifier = Modifier) {
                             selectedTextColor = MaterialTheme.colorScheme.primary,
                             onItemSelected = { i, item ->
                                 endHour = item
+                                val start: Int = (if (startHour < 12) startHour * 60 else 0) + startMin + (if (startXM == "PM") 720 else 0)
+                                val end: Int = (if (endHour < 12) endHour * 60 else 0) + endMin + (if (endXM == "PM") 720 else 0)
+                                timeError = start >= end
+                                canAdd = !(nameError || nameDelimError || timeError || noteDelimError) && nameEdit
                             }
                         )
                         Text(
@@ -418,9 +554,14 @@ fun editTaskScreen(modifier: Modifier = Modifier) {
                             selectedTextColor = MaterialTheme.colorScheme.primary,
                             onItemSelected = { i, item ->
                                 endMin = item
+                                val start: Int = (if (startHour < 12) startHour * 60 else 0) + startMin + (if (startXM == "PM") 720 else 0)
+                                val end: Int = (if (endHour < 12) endHour * 60 else 0) + endMin + (if (endXM == "PM") 720 else 0)
+                                timeError = start >= end
+                                canAdd = !(nameError || nameDelimError || timeError || noteDelimError) && nameEdit
                             }
                         )
-                        InfiniteCircularList(
+                        Spacer(modifier = Modifier.width(8.dp))
+                        CircularList(
                             width = 50.dp,
                             itemHeight = 30.dp,
                             numberOfDisplayedItems = 3,
@@ -432,11 +573,24 @@ fun editTaskScreen(modifier: Modifier = Modifier) {
                             selectedTextColor = MaterialTheme.colorScheme.primary,
                             onItemSelected = { i, item ->
                                 endXM = item
+                                val start: Int = (if (startHour < 12) startHour * 60 else 0) + startMin + (if (startXM == "PM") 720 else 0)
+                                val end: Int = (if (endHour < 12) endHour * 60 else 0) + endMin + (if (endXM == "PM") 720 else 0)
+                                timeError = start >= end
+                                canAdd = !(nameError || nameDelimError || timeError || noteDelimError) && nameEdit
                             }
                         )
+                        Spacer(modifier = Modifier.width(4.dp))
                     }
                 }
             }
+            if (timeError) {
+                Text(
+                    text = "Start time must be earlier than end time.",
+                    color = Color.Red,
+                    modifier = Modifier.padding(start = 12.dp)
+                )
+            }
+            Spacer(modifier = Modifier.padding(bottom = 12.dp))
 
             val todayMillis = LocalDate.now()
                 .atStartOfDay(ZoneId.of(Planner.timeZone))
@@ -451,6 +605,78 @@ fun editTaskScreen(modifier: Modifier = Modifier) {
                     selectedDate.value = date
                 },
             )
+            OutlinedTextField(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp)
+                    .padding(start = 8.dp, end = 8.dp, top = 12.dp),
+                value = note,
+                onValueChange = {
+                    note = it
+                    noteDelimError = note.contains(Planner.DELIM)
+                    canAdd = !(nameError || nameDelimError || timeError || noteDelimError) || nameEdit
+                                },
+                label = { Text("Note") }
+            )
+            if (noteDelimError) {
+                Text(
+                    text = "Note cannot include ${Planner.DELIM}.",
+                    color = Color.Red,
+                    modifier = Modifier.padding(start = 12.dp)
+                )
+            }
+            Spacer(modifier = Modifier.weight(1f))
+            Row(modifier = Modifier.padding(8.dp)) {
+                Spacer(modifier = Modifier.weight(1f))
+                TextButton(
+                    onClick = onContinueClicked,
+                    modifier = Modifier
+                        .background(
+                            color = Color.Red,
+                            shape = RoundedCornerShape(25.dp)
+                        )
+                        .padding(end = 8.dp)
+                ) {
+                    Text(
+                        text = "Cancel",
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = Color.White,
+                        textAlign = TextAlign.Center
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                TextButton(
+                    onClick = {
+                        val start: Int =
+                            (if (startHour < 12) startHour * 60 else 0) + startMin + (if (startXM == "PM") 720 else 0)
+                        val end: Int =
+                            (if (endHour < 12) endHour * 60 else 0) + endMin + (if (endXM == "PM") 720 else 0)
+                        if (canAdd) {
+                            onContinueClicked()
+                            val fName = name.trim().replace(" ", "_")
+                            Planner.insertTask(Planner.newTask(fName, " ", start, end, note))
+                        }
+                        else {
+                            nameError = name.trim() == ""
+                            nameDelimError = name.contains(Planner.DELIM)
+                            timeError = start >= end
+                            noteDelimError = note.contains(Planner.DELIM)
+                        }
+                    },
+                    modifier = Modifier
+                        .background(
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = if (canAdd) 1f else 0.5f),
+                            shape = RoundedCornerShape(25.dp)
+                        )
+                ) {
+                    Text(
+                        text = "Confirm",
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = Color.White.copy(alpha = if (canAdd) 1f else 0.5f),
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
         }
     }
 }
@@ -518,9 +744,11 @@ fun <T> InfiniteCircularList(
         )
     ) {
         items(
-            count = if (items[0] is String) itemsState.size else Int.MAX_VALUE,
+            count = Int.MAX_VALUE,
             itemContent = { i ->
-                val item = itemsState[i % itemsState.size]
+                val index = i - 1
+                val item = itemsState[(itemsState.size + index + 1) % itemsState.size]
+                val REALitem = itemsState[(itemsState.size + index) % itemsState.size]
                 Box(
                     modifier = Modifier
                         .height(itemHeight)
@@ -530,9 +758,9 @@ fun <T> InfiniteCircularList(
                             val parentHalfHeight = (itemHalfHeight * numberOfDisplayedItems)
                             val isSelected =
                                 (y > parentHalfHeight - itemHalfHeight && y < parentHalfHeight + itemHalfHeight)
-                            val index = i - 1
+
                             if (isSelected && lastSelectedIndex != index) {
-                                onItemSelected(index % itemsState.size, item)
+                                onItemSelected(index % itemsState.size, REALitem)
                                 lastSelectedIndex = index
                             }
                         },
@@ -540,6 +768,112 @@ fun <T> InfiniteCircularList(
                 ) {
                     Text(
                         text = if (item is String) item else String.format("%02d", item),
+                        style = textStyle,
+                        color = if (lastSelectedIndex == i) {
+                            selectedTextColor
+                        } else {
+                            textColor
+                        },
+                        fontSize = if (lastSelectedIndex == i) {
+                            textStyle.fontSize * itemScaleFact
+                        } else {
+                            textStyle.fontSize
+                        }
+                    )
+                }
+            }
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun previewCircularList() {
+    var initialItem = "AM"
+    var test by remember { mutableStateOf(initialItem) }
+    var items = listOf("", "AM", "PM", "")
+
+    CircularList(
+        width = 50.dp,
+        itemHeight = 30.dp,
+        numberOfDisplayedItems = 3,
+        items = items,
+        initialItem = initialItem,
+        itemScaleFact = 1f,
+        textStyle = MaterialTheme.typography.headlineSmall,
+        textColor = MaterialTheme.colorScheme.secondary,
+        selectedTextColor = MaterialTheme.colorScheme.primary,
+        onItemSelected = { i, item ->
+            test = item
+        }
+    )
+    Text(
+        text = test.toString()
+    )
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun <T> CircularList(
+    width: Dp,
+    itemHeight: Dp,
+    numberOfDisplayedItems: Int = 3,
+    items: List<T>,
+    initialItem: T,
+    itemScaleFact: Float = 1.5f,
+    textStyle: TextStyle,
+    textColor: Color,
+    selectedTextColor: Color,
+    onItemSelected: (index: Int, item: T) -> Unit = { _, _ -> }
+) {
+    val itemHalfHeight = LocalDensity.current.run { itemHeight.toPx() / 2f }
+    val scrollState = rememberLazyListState(0)
+    var lastSelectedIndex by remember {
+        mutableStateOf(0)
+    }
+    var itemsState by remember {
+        mutableStateOf(items)
+    }
+    var targetIndex = items.indexOf(initialItem) - 1
+    LaunchedEffect(items) {
+        var targetIndex2 = targetIndex + ((Int.MAX_VALUE / 2) / items.size) * items.size
+        itemsState = items
+        lastSelectedIndex = targetIndex2
+        scrollState.scrollToItem(targetIndex)
+    }
+    LazyColumn(
+        modifier = Modifier
+            .width(width)
+            .height(itemHeight * numberOfDisplayedItems),
+        state = scrollState,
+        flingBehavior = rememberSnapFlingBehavior(
+            lazyListState = scrollState
+        )
+    ) {
+        items(
+            count = itemsState.size,
+            itemContent = { i ->
+                val index = i - 1
+                val item = itemsState[(itemsState.size + index + 1) % itemsState.size]
+                val REALitem = itemsState[(itemsState.size + index) % itemsState.size]
+                Box(
+                    modifier = Modifier
+                        .height(itemHeight)
+                        .fillMaxWidth()
+                        .onGloballyPositioned { coordinates ->
+                            val y = coordinates.positionInParent().y - itemHalfHeight
+                            val parentHalfHeight = (itemHalfHeight * numberOfDisplayedItems)
+                            val isSelected =
+                                (y > parentHalfHeight - itemHalfHeight && y < parentHalfHeight + itemHalfHeight)
+                            if (isSelected && lastSelectedIndex != index) {
+                                onItemSelected(index % itemsState.size, REALitem)
+                                lastSelectedIndex = index
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = item.toString(),
                         style = textStyle,
                         color = if (lastSelectedIndex == i) {
                             selectedTextColor
@@ -579,7 +913,7 @@ fun Task(modifier: Modifier = Modifier, name: String, start: Int, end: Int) {
                 style = MaterialTheme.typography.headlineMedium
             )
             Text(
-                text = Planner.convertNumToTime(start, end),
+                text = Planner.convertNumToTime(start) + "-" + Planner.convertNumToTime(end),
                 modifier = Modifier.padding(end = 4.dp),
                 style = MaterialTheme.typography.headlineMedium
             )
