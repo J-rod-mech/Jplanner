@@ -75,10 +75,26 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material3.DatePickerState
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.draw.clip
+import com.example.jplanner.Planner.HALF_HOURS
+import com.example.jplanner.Planner.HOUR_DIV
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.concurrent.TimeUnit
+
+var editName = mutableStateOf("")
+
+var editStart = mutableStateOf(0)
+var editStartHour = mutableStateOf(12)
+var editStartMin = mutableStateOf(0)
+var editStartXM = mutableStateOf("AM")
+var editEnd = mutableStateOf(60)
+var editEndHour = mutableStateOf(1)
+var editEndMin = mutableStateOf(0)
+var editEndXM = mutableStateOf("AM")
+var editNote = mutableStateOf("")
+var editMode = mutableStateOf(false)
 
 class MainActivity : ComponentActivity() {
     companion object {
@@ -107,17 +123,34 @@ class MyTasks {
 
 @Composable
 fun MyApp(modifier: Modifier = Modifier, myTasks: MyTasks) {
-    var showEditTaskScreen by remember { mutableStateOf(false) }
-    if (showEditTaskScreen) {
+    var showAddTaskScreen by remember { mutableStateOf(false) }
+    if (showAddTaskScreen) {
         EditTaskScreen(
-            onContinueClicked = { showEditTaskScreen = false }
+            onContinueClicked = {
+                showAddTaskScreen = false
+            }
+        )
+    }
+    else if (editMode.value) {
+        EditTaskScreen(
+            newName = editName.value,
+            newStartHour = editStartHour.value,
+            newStartMin = editStartMin.value,
+            newStartXM = editStartXM.value,
+            newEndHour = editEndHour.value,
+            newEndMin = editEndMin.value,
+            newEndXM = editEndXM.value,
+            newNote = editNote.value,
+            onContinueClicked = {
+                editMode.value = false
+            }
         )
     }
     else {
         taskList(
             myTasks = myTasks,
-            onContinueClicked = {
-                showEditTaskScreen = true
+            onAddClicked = {
+                showAddTaskScreen = true
             }
         )
     }
@@ -224,7 +257,7 @@ fun previewTaskList(modifier: Modifier = Modifier) {
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             items(items = myTasks.tasks) { task ->
-                Task(name = task.getName(), start = task.getStart(), end = task.getEnd())
+                Task(task = task)
             }
         }
     }
@@ -234,7 +267,7 @@ fun previewTaskList(modifier: Modifier = Modifier) {
 fun taskList(modifier:
              Modifier = Modifier,
              myTasks: MyTasks,
-             onContinueClicked: () -> Unit
+             onAddClicked: () -> Unit
 ) {
     val context = LocalContext.current
     Scaffold(
@@ -242,7 +275,7 @@ fun taskList(modifier:
             .fillMaxSize(),
         bottomBar = { readFile(
             myTasks = myTasks,
-            onContinueClicked = onContinueClicked
+            onContinueClicked = onAddClicked
         )}
     ) { innerPadding ->
         LazyColumn(
@@ -252,7 +285,7 @@ fun taskList(modifier:
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             items(items = myTasks.tasks) { task ->
-                Task(name = task.getName(), start = task.getStart(), end = task.getEnd())
+                Task(task = task)
             }
         }
     }
@@ -339,11 +372,11 @@ fun EditTaskScreen(
     newEndHour: Int = if (newStartHour < 12) (if (newStartHour == 11 && newStartXM == "PM") 11 else newStartHour + 1) else 1,
     newEndMin: Int = if (newStartHour == 11 && newStartXM == "PM") 59 else newStartMin,
     newEndXM: String = if (newStartHour != 11) newStartXM else "PM",
-    newNote: String = "",
-    editing: Boolean = false
+    newNote: String = ""
     ) {
     Surface() {
         var name by remember { mutableStateOf(newName) }
+        name = if (name.replace("_", " ").trim() == "") name else name.replace("_", " ")
         var startHour by remember { mutableStateOf(newStartHour) }
         var startMin by remember { mutableStateOf(newStartMin) }
         var startXM by remember { mutableStateOf(newStartXM) }
@@ -363,7 +396,7 @@ fun EditTaskScreen(
         ) {
             Spacer(modifier = Modifier.padding(16.dp))
             Text(
-                text = "Add New Task:",
+                text = if (editMode.value) "Editing ${editName.value}:" else "Add New Task:",
                 color = MaterialTheme.colorScheme.primary,
                 style = MaterialTheme.typography.titleLarge,
                 textAlign = TextAlign.Center
@@ -652,9 +685,15 @@ fun EditTaskScreen(
                         val end: Int =
                             (if (endHour < 12) endHour * 60 else 0) + endMin + (if (endXM == "PM") 720 else 0)
                         if (canAdd) {
-                            onContinueClicked()
                             val fName = name.trim().replace(" ", "_")
-                            Planner.insertTask(Planner.newTask(fName, " ", start, end, note))
+                            val fNote = if (note == "") " " else note
+                            if (editMode.value) {
+                                Planner.replaceTask(Planner.getTaskIdx(editName.value, editStart.value, editEnd.value), fName, " ", start, end, fNote)
+                            }
+                            else {
+                                Planner.insertTask(Planner.newTask(fName, " ", start, end, fNote))
+                            }
+                            onContinueClicked()
                         }
                         else {
                             nameError = name.trim() == ""
@@ -893,11 +932,23 @@ fun <T> CircularList(
 }
 
 @Composable
-fun Task(modifier: Modifier = Modifier, name: String, start: Int, end: Int) {
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primary
-        ),
+fun Task(modifier: Modifier = Modifier, task: Task) {
+    Button (
+        onClick = {
+            editName.value = task.name
+            editStart.value = task.start
+            editStartHour.value = (task.start % (HALF_HOURS * HOUR_DIV)) / HOUR_DIV
+            editStartHour.value = if (editStartHour.value > 0) editStartHour.value else 12
+            editStartMin.value = task.start % HOUR_DIV
+            editStartXM.value = if (task.start >= HALF_HOURS * HOUR_DIV) "PM" else "AM"
+            editEnd.value = task.end
+            editEndHour.value = (task.end % (HALF_HOURS * HOUR_DIV)) / HOUR_DIV
+            editEndHour.value = if (editEndHour.value > 0) editEndHour.value else 12
+            editEndMin.value = task.end % HOUR_DIV
+            editEndXM.value = if (task.end >= HALF_HOURS * HOUR_DIV) "PM" else "AM"
+            editNote.value = task.note
+            editMode.value = true
+        }
     ) {
         Row(
             modifier = Modifier
@@ -905,7 +956,7 @@ fun Task(modifier: Modifier = Modifier, name: String, start: Int, end: Int) {
                 .padding(8.dp)
         ) {
             Text(
-                text = name,
+                text = if (task.name.replace("_", " ").trim() == "") task.name else task.name.replace("_", " "),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(start = 4.dp)
@@ -913,7 +964,7 @@ fun Task(modifier: Modifier = Modifier, name: String, start: Int, end: Int) {
                 style = MaterialTheme.typography.headlineMedium
             )
             Text(
-                text = Planner.convertNumToTime(start) + "-" + Planner.convertNumToTime(end),
+                text = Planner.convertNumToTime(task.start) + "-" + Planner.convertNumToTime(task.end),
                 modifier = Modifier.padding(end = 4.dp),
                 style = MaterialTheme.typography.headlineMedium
             )

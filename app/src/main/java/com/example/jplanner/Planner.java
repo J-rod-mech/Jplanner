@@ -225,21 +225,11 @@ public class Planner {
         return slot / HUNDRED_DIV * QUAD + slot % HUNDRED_DIV / FIFTEEN_DIV;
     }
 
-    public static int getTaskIdx(String name, String N) {
-        int n = -1;
-        try {
-            n = Integer.parseInt(N);
-        }
-        catch (NumberFormatException e) {
-            return -1;
-        }
-
+    public static int getTaskIdx(String name, int start, int end) {
         for (int i = 0; i < tasks.size(); i++) {
-            if (tasks.get(i).getName().equals(name)) {
-                n--;
-                if (n == 0) {
-                    return i;
-                }
+            Task t = tasks.get(i);
+            if (t.getName().equals(name) && t.getStart() == start && t.getEnd() == end) {
+                return i;
             }
         }
 
@@ -287,14 +277,14 @@ public class Planner {
         tasks.add(lo, task);
     }
 
-    public static void moveTask(int idx, int newStart, int newEnd) {
-        Task task = tasks.get(idx);
-
-        String name = task.getName();
-        String tag = task.getTag();
-        Boolean complete = task.isComplete();
-        String note = task.getNote();
-
+    public static void replaceTask(
+            int idx,
+            String newName,
+            String newTag,
+            int newStart,
+            int newEnd,
+            String newNote
+    ) {
         tasks.remove(idx);
         int lo = 0;
         int hi = tasks.size() - 1;
@@ -310,7 +300,7 @@ public class Planner {
         if (lo < tasks.size() && tasks.get(lo).getStart() <= newStart) {
             lo++;
         }
-        tasks.add(lo, new Task(name, tag, complete, newStart, newEnd, note));
+        tasks.add(lo, new Task(newName, newTag, false, newStart, newEnd, newNote));
     }
 
     public static void printSchedule() {
