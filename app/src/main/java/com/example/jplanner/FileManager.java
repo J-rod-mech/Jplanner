@@ -38,9 +38,6 @@ public class FileManager {
         catch (IOException e) {
             Planner.tasks.add(new Task(Planner.zonedDate + " failed :(", " ", 1, 2));
         }
-        for (Task t: Planner.tasks) {
-            System.out.println(t.getName() + " " + t.getStart() + " " + t.getEnd());
-        }
     }
     
     public static void writeFile(Context context) {

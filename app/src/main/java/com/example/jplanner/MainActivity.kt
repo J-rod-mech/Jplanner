@@ -1,9 +1,8 @@
 package com.example.jplanner
 
-import android.R
+import com.example.jplanner.R
 import android.R.attr.label
 import android.R.attr.text
-import android.graphics.drawable.Icon
 import android.os.Bundle
 import android.text.format.DateUtils
 import android.widget.Button
@@ -60,7 +59,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
@@ -77,11 +75,15 @@ import androidx.compose.material3.DatePickerState
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.painterResource
 import com.example.jplanner.Planner.HALF_HOURS
 import com.example.jplanner.Planner.HOUR_DIV
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.concurrent.TimeUnit
+import androidx.compose.material3.Icon
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.input.pointer.pointerInput
 
 var editName = mutableStateOf("")
 
@@ -375,6 +377,7 @@ fun EditTaskScreen(
     newNote: String = ""
     ) {
     Surface() {
+        val context = LocalContext.current
         var name by remember { mutableStateOf(newName) }
         name = if (name.replace("_", " ").trim() == "") name else name.replace("_", " ")
         var startHour by remember { mutableStateOf(newStartHour) }
@@ -390,6 +393,7 @@ fun EditTaskScreen(
         var noteDelimError by remember { mutableStateOf(false) }
         var nameEdit by remember { mutableStateOf(name != "") }
         var canAdd by remember { mutableStateOf(false) }
+        var confirmDelete by remember { mutableStateOf(false) }
 
         Column(
             horizontalAlignment = Alignment.CenterHorizontally
@@ -660,12 +664,29 @@ fun EditTaskScreen(
             }
             Spacer(modifier = Modifier.weight(1f))
             Row(modifier = Modifier.padding(8.dp)) {
+                if (editMode.value) {
+                    IconButton(
+                        onClick = {
+                            confirmDelete = true
+                        },
+                        modifier = Modifier
+                            .width(50.dp)
+                            .height(50.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.trash_icon),
+                            contentDescription = "trash delete icon",
+                            tint = Color.Unspecified,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                }
                 Spacer(modifier = Modifier.weight(1f))
                 TextButton(
                     onClick = onContinueClicked,
                     modifier = Modifier
                         .background(
-                            color = Color.Red,
+                            color = Color.LightGray,
                             shape = RoundedCornerShape(25.dp)
                         )
                         .padding(end = 8.dp)
@@ -693,6 +714,7 @@ fun EditTaskScreen(
                             else {
                                 Planner.insertTask(Planner.newTask(fName, " ", start, end, fNote))
                             }
+                            FileManager.writeFile(context)
                             onContinueClicked()
                         }
                         else {
@@ -717,9 +739,98 @@ fun EditTaskScreen(
                 }
             }
         }
+        if (confirmDelete) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Gray.copy(alpha = 0.5f))
+                    .pointerInput(Unit) {
+                        // consume all pointer events so nothing under this box receives them
+                        awaitPointerEventScope {
+                            while (true) {
+                                val evt = awaitPointerEvent()
+                                evt.changes.forEach { it.consume() }
+                            }
+                        }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                deleteDialog(
+                    onContinueClicked = { confirmDelete = false }
+                )
+            }
+        }
     }
 }
 
+@Composable
+fun deleteDialog(
+    onContinueClicked: () -> Unit
+) {
+    val context = LocalContext.current
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .background(
+                color = Color.White.copy(alpha = 1f),
+                shape = RoundedCornerShape(12.dp)
+            )
+            .padding(18.dp)
+    ) {
+        Text(
+            text = "Delete ${editName.value}?",
+            style = MaterialTheme.typography.headlineSmall,
+            modifier = Modifier.padding(bottom = 18.dp)
+        )
+        Row() {
+            TextButton(
+                onClick = onContinueClicked,
+                modifier = Modifier
+                    .background(
+                        color = Color.LightGray,
+                        shape = RoundedCornerShape(25.dp)
+                    )
+                    .padding(end = 8.dp)
+            ) {
+                Text(
+                    text = "Cancel",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = Color.White,
+                    textAlign = TextAlign.Center
+                )
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            TextButton(
+                onClick = {
+                    Planner.tasks.removeAt(
+                        Planner.getTaskIdx(
+                            editName.value,
+                            editStart.value,
+                            editEnd.value
+                        )
+                    )
+                    FileManager.writeFile(context)
+                    onContinueClicked()
+                    editMode.value = false
+                          },
+                modifier = Modifier
+                    .background(
+                        color = Color.Red,
+                        shape = RoundedCornerShape(25.dp)
+                    )
+                    .padding(end = 8.dp)
+            ) {
+                Text(
+                    text = "Delete",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = Color.White,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+    }
+
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
