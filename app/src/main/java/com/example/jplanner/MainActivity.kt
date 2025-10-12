@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -27,13 +28,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.jplanner.ui.theme.JplannerTheme
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.material3.Button
@@ -71,6 +73,7 @@ import java.util.Locale
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.DatePickerState
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.setValue
@@ -82,11 +85,13 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.concurrent.TimeUnit
 import androidx.compose.material3.Icon
+import androidx.compose.material3.RadioButton
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.Role
 
 var editName = mutableStateOf("")
-
 var editStart = mutableStateOf(0)
 var editStartHour = mutableStateOf(12)
 var editStartMin = mutableStateOf(0)
@@ -97,6 +102,16 @@ var editEndMin = mutableStateOf(0)
 var editEndXM = mutableStateOf("AM")
 var editNote = mutableStateOf("")
 var editMode = mutableStateOf(false)
+
+var workingDate = mutableStateOf(Planner.zonedDate)
+var currDate = mutableStateOf(Planner.zonedDate)
+
+val todayMillis = LocalDate.now()
+    .atStartOfDay(ZoneId.of(Planner.timeZone))
+    .toInstant()
+    .toEpochMilli()
+val selectedDate = mutableLongStateOf(todayMillis)
+val selectedView = mutableStateOf("Daily")
 
 class MainActivity : ComponentActivity() {
     companion object {
@@ -109,6 +124,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             JplannerTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+                    FileManager.readFile(this)
                     MyApp(
                         modifier = Modifier.padding(innerPadding),
                         myTasks = list
@@ -125,7 +141,10 @@ class MyTasks {
 
 @Composable
 fun MyApp(modifier: Modifier = Modifier, myTasks: MyTasks) {
+    val context = LocalContext.current
     var showAddTaskScreen by remember { mutableStateOf(false) }
+    var showViewScreen by remember { mutableStateOf(false) }
+
     if (showAddTaskScreen) {
         EditTaskScreen(
             onContinueClicked = {
@@ -153,8 +172,30 @@ fun MyApp(modifier: Modifier = Modifier, myTasks: MyTasks) {
             myTasks = myTasks,
             onAddClicked = {
                 showAddTaskScreen = true
+            },
+            onViewClicked = {
+                showViewScreen = true
             }
         )
+        if (showViewScreen) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.DarkGray.copy(alpha = 0.5f))
+                    .pointerInput(Unit) {
+                        // consume all pointer events so nothing under this box receives them
+                        awaitPointerEventScope {
+                            while (true) {
+                                val evt = awaitPointerEvent()
+                                evt.changes.forEach { it.consume() }
+                            }
+                        }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                ViewDialog(onContinueClicked = {showViewScreen = false})
+            }
+        }
     }
 }
 
@@ -172,22 +213,26 @@ fun MaterialDatePicker(
     } ?: ""
 
     Box(modifier = Modifier.fillMaxWidth()) {
-        OutlinedTextField(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(76.dp)
-                .padding(8.dp)
-            ,
-            value = selectedDateText,
-            onValueChange = {},
-            label = { Text(placeholderText) },
-            readOnly = true,
-            trailingIcon = {
-                IconButton(onClick = { isDatePickerVisible = !isDatePickerVisible }) {
-                    Icon(imageVector = Icons.Default.DateRange, contentDescription = "Select a date for your task:")
-                }
-            }
-        )
+        OutlinedTextFieldBackground(Color.White) {
+            OutlinedTextField(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(76.dp)
+                    .padding(8.dp),
+                value = selectedDateText,
+                onValueChange = {},
+                label = { Text(placeholderText) },
+                readOnly = true,
+                trailingIcon = {
+                    IconButton(onClick = { isDatePickerVisible = !isDatePickerVisible }) {
+                        Icon(
+                            imageVector = Icons.Default.DateRange,
+                            contentDescription = "Select a date for your task:"
+                        )
+                    }
+                },
+            )
+        }
 
         if (isDatePickerVisible) {
             DatePickerDialog(
@@ -227,7 +272,7 @@ fun DatePickerDialog(
                 onDismiss()
                 datePickerState.selectedDateMillis = tempDate
             }) {
-                Text("Cancel")
+                Text("Back")
             }
         }
     ) {
@@ -242,125 +287,121 @@ fun formatDate(millis: Long, pattern: String = "MM-dd-yyyy"): String {
     return formatter.format(Date(millis))
 }
 
-@Preview
 @Composable
-fun previewTaskList(modifier: Modifier = Modifier) {
-    val myTasks = MyTasks()
-    val context = LocalContext.current
-    Scaffold(
-        modifier = Modifier
-            .fillMaxSize(),
-        bottomBar = { testReadFile(myTasks = myTasks) }
-    ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .padding(top = 24.dp)
-                .padding(paddingValues = innerPadding),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(items = myTasks.tasks) { task ->
-                Task(task = task)
-            }
-        }
-    }
-}
-
-@Composable
-fun taskList(modifier:
-             Modifier = Modifier,
-             myTasks: MyTasks,
-             onAddClicked: () -> Unit
-) {
-    val context = LocalContext.current
-    Scaffold(
-        modifier = Modifier
-            .fillMaxSize(),
-        bottomBar = { readFile(
-            myTasks = myTasks,
-            onContinueClicked = onAddClicked
-        )}
-    ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .padding(top = 24.dp)
-                .padding(paddingValues = innerPadding),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(items = myTasks.tasks) { task ->
-                Task(task = task)
-            }
-        }
-    }
-}
-
-@Composable
-fun testReadFile(modifier: Modifier = Modifier, myTasks: MyTasks) {
-    Surface(color = MaterialTheme.colorScheme.secondary) {
-        val context = LocalContext.current
-        Row(
-            modifier = Modifier
-                .background(MaterialTheme.colorScheme.secondary)
-                .fillMaxWidth()
-        ) {
-            Button(
-                onClick = {
-                    myTasks.tasks.add(Planner.testFunc1("best"))
-                    myTasks.tasks.add(Planner.testFunc1("test"))
-                    myTasks.tasks.add(Planner.testFunc1("rest"))
-                },
-                colors = ButtonDefaults.buttonColors(MaterialTheme.colorScheme.secondary),
-                modifier = Modifier.padding(vertical = 4.dp)
-            ) {
-                Text("fetch schedule")
-            }
-        }
-    }
-}
-@Composable
-fun readFile(
+fun taskList(
     modifier: Modifier = Modifier,
     myTasks: MyTasks,
-    onContinueClicked: () -> Unit
+    onAddClicked: () -> Unit,
+    onViewClicked: () -> Unit
 ) {
-    Surface(color = MaterialTheme.colorScheme.secondary) {
-        val context = LocalContext.current
-        Row {
-            Button(
-                modifier = Modifier.background(MaterialTheme.colorScheme.secondary),
-                onClick = {
-                    FileManager.readFile(context)
-                }
-            ) {
-                Text("fetch schedule")
-            }
-            Spacer(modifier = Modifier.weight(1f))
-            Button(
-                modifier = Modifier.background(MaterialTheme.colorScheme.secondary),
-                onClick = onContinueClicked
-            ) {
-                Text("add task")
-            }
-        }
-    }
-}
-
-/*
-@Composable
-fun addTask(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
     Scaffold(
         modifier = Modifier
-            .background(MaterialTheme.colorScheme.tertiary)
-    ) {
-        IconButton(
-
+            .fillMaxSize(),
+        bottomBar = { bottomBar(
+            onContinueClicked = onAddClicked,
+            onViewClicked = onViewClicked
+        )},
+        topBar = { topBar() }
+    ) { innerPadding ->
+        LazyColumn(
+            modifier = Modifier
+                .padding(paddingValues = innerPadding),
         ) {
-            Icon(
-
-            )
+            if (selectedView.value == "Daily") {
+                items(items = myTasks.tasks) { task ->
+                    Task(
+                        task = task,
+                        date = currDate.value
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                }
+            }
+            else {
+                items(items = FileManager.upcomingList(context)) { dayTasks ->
+                    for (i in 1..<dayTasks.size) {
+                        Task(
+                            task = dayTasks[i],
+                            date = dayTasks[0].name
+                            )
+                        Spacer(modifier = Modifier.height(2.dp))
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                }
+            }
         }
     }
 }
-*/
+
+@Composable
+fun bottomBar(
+    modifier: Modifier = Modifier,
+    onContinueClicked: () -> Unit,
+    onViewClicked: () -> Unit
+) {
+    Surface(color = MaterialTheme.colorScheme.secondary) {
+        Row {
+            IconButton(
+                modifier = Modifier
+                    .background(MaterialTheme.colorScheme.secondary)
+                    .width(54.dp)
+                    .height(54.dp)
+                    .padding(6.dp),
+                onClick = onViewClicked
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Menu,
+                    contentDescription = "Select viewing option:",
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+            Spacer(modifier = Modifier.weight(1f))
+            TextButton(
+                modifier = Modifier
+                    .background(MaterialTheme.colorScheme.secondary),
+                onClick = onContinueClicked
+            ) {
+                Text(
+                    text = "+",
+                    color = Color.White,
+                    style = MaterialTheme.typography.headlineLarge,
+                    )
+            }
+        }
+    }
+}
+
+@Composable
+fun topBar(
+) {
+    val context = LocalContext.current
+    Surface(
+        color = MaterialTheme.colorScheme.secondary
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = if (selectedView.value == "Daily") 8.dp else 24.dp)
+        ) {
+            if (selectedView.value == "Daily") {
+                MaterialDatePicker(
+                    placeholderText = "",
+                    selectedDateMillis = selectedDate.value,
+                    onDateSelected = { date ->
+                        selectedDate.value = date
+                        currDate.value = (date.plus(TimeUnit.DAYS.toMillis(1))).let {
+                            formatDate(it)
+                        }
+                        workingDate.value = currDate.value
+                        Planner.zonedDate = currDate.value
+                        FileManager.readFile(context)
+                    },
+                )
+            }
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -394,32 +435,35 @@ fun EditTaskScreen(
         var nameEdit by remember { mutableStateOf(name != "") }
         var canAdd by remember { mutableStateOf(false) }
         var confirmDelete by remember { mutableStateOf(false) }
-
+        note = if (note.trim() == "") "" else note
         Column(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(modifier = Modifier.padding(16.dp))
+            val displayName = if (editName.value.replace("_", " ").trim() == "") editName.value else editName.value.replace("_", " ")
             Text(
-                text = if (editMode.value) "Editing ${editName.value}:" else "Add New Task:",
+                text = if (editMode.value) "Editing ${displayName}:" else "Add New Task:",
                 color = MaterialTheme.colorScheme.primary,
                 style = MaterialTheme.typography.titleLarge,
                 textAlign = TextAlign.Center
             )
-            OutlinedTextField(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(76.dp)
-                    .padding(top = 8.dp, start = 8.dp, end = 8.dp),
-                value = name,
-                onValueChange = {
-                    name = it
-                    nameError = name.trim() == ""
-                    nameDelimError = name.contains(Planner.DELIM)
-                    nameEdit = true
-                    canAdd = !(nameError || nameDelimError || timeError || noteDelimError)
-                                },
-                label = { Text("Name") },
-            )
+            OutlinedTextFieldBackground(Color.White) {
+                OutlinedTextField(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(76.dp)
+                        .padding(8.dp),
+                    value = name,
+                    onValueChange = {
+                        name = it
+                        nameError = name.trim() == ""
+                        nameDelimError = name.contains(Planner.DELIM)
+                        nameEdit = true
+                        canAdd = !(nameError || nameDelimError || timeError || noteDelimError)
+                    },
+                    label = { Text("Name") },
+                )
+            }
             if (nameError) {
                 Text(
                     text = "Name must be filled.",
@@ -629,32 +673,31 @@ fun EditTaskScreen(
             }
             Spacer(modifier = Modifier.padding(bottom = 12.dp))
 
-            val todayMillis = LocalDate.now()
-                .atStartOfDay(ZoneId.of(Planner.timeZone))
-                .toInstant()
-                .toEpochMilli()
-            val selectedDate = remember { mutableLongStateOf(todayMillis) }
-
             MaterialDatePicker(
                 placeholderText = "Date",
                 selectedDateMillis = selectedDate.value,
                 onDateSelected = { date ->
-                    selectedDate.value = date
+                    workingDate.value = (date.plus(TimeUnit.DAYS.toMillis(1))).let {
+                        formatDate(it) }
                 },
             )
-            OutlinedTextField(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(200.dp)
-                    .padding(start = 8.dp, end = 8.dp, top = 12.dp),
-                value = note,
-                onValueChange = {
-                    note = it
-                    noteDelimError = note.contains(Planner.DELIM)
-                    canAdd = !(nameError || nameDelimError || timeError || noteDelimError) || nameEdit
-                                },
-                label = { Text("Note") }
-            )
+            Spacer(modifier = Modifier.height(4.dp))
+            OutlinedTextFieldBackground(Color.White) {
+                OutlinedTextField(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp)
+                        .padding(start = 8.dp, end = 8.dp, top = 8.dp),
+                    value = note,
+                    onValueChange = {
+                        note = it
+                        noteDelimError = note.contains(Planner.DELIM)
+                        canAdd =
+                            !(nameError || nameDelimError || timeError || noteDelimError) && nameEdit
+                    },
+                    label = { Text("Note") }
+                )
+            }
             if (noteDelimError) {
                 Text(
                     text = "Note cannot include ${Planner.DELIM}.",
@@ -683,7 +726,10 @@ fun EditTaskScreen(
                 }
                 Spacer(modifier = Modifier.weight(1f))
                 TextButton(
-                    onClick = onContinueClicked,
+                    onClick = {
+                        workingDate.value = currDate.value
+                        onContinueClicked()
+                              },
                     modifier = Modifier
                         .background(
                             color = Color.LightGray,
@@ -692,7 +738,7 @@ fun EditTaskScreen(
                         .padding(end = 8.dp)
                 ) {
                     Text(
-                        text = "Cancel",
+                        text = "Back",
                         style = MaterialTheme.typography.headlineSmall,
                         color = Color.White,
                         textAlign = TextAlign.Center
@@ -707,14 +753,24 @@ fun EditTaskScreen(
                             (if (endHour < 12) endHour * 60 else 0) + endMin + (if (endXM == "PM") 720 else 0)
                         if (canAdd) {
                             val fName = name.trim().replace(" ", "_")
-                            val fNote = if (note == "") " " else note
+                            val fNote = if (note.trim() == "") " " else note.trim()
                             if (editMode.value) {
-                                Planner.replaceTask(Planner.getTaskIdx(editName.value, editStart.value, editEnd.value), fName, " ", start, end, fNote)
+                                Planner.tasks.removeAt(
+                                    Planner.getTaskIdx(
+                                        editName.value,
+                                        editStart.value,
+                                        editEnd.value
+                                    )
+                                )
+                                FileManager.writeFile(context)
                             }
-                            else {
-                                Planner.insertTask(Planner.newTask(fName, " ", start, end, fNote))
-                            }
+                            Planner.zonedDate = workingDate.value
+                            FileManager.readFile(context)
+                            Planner.insertTask(fName, " ", start, end, fNote)
                             FileManager.writeFile(context)
+                            workingDate.value = currDate.value
+                            Planner.zonedDate = currDate.value
+                            FileManager.readFile(context)
                             onContinueClicked()
                         }
                         else {
@@ -743,7 +799,7 @@ fun EditTaskScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Gray.copy(alpha = 0.5f))
+                    .background(Color.DarkGray.copy(alpha = 0.5f))
                     .pointerInput(Unit) {
                         // consume all pointer events so nothing under this box receives them
                         awaitPointerEventScope {
@@ -756,7 +812,57 @@ fun EditTaskScreen(
                 contentAlignment = Alignment.Center
             ) {
                 deleteDialog(
-                    onContinueClicked = { confirmDelete = false }
+                    onContinueClicked = {
+                        workingDate.value = currDate.value
+                        Planner.zonedDate = currDate.value
+                        FileManager.readFile(context)
+                        confirmDelete = false
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ViewDialog(
+    modifier: Modifier = Modifier,
+    onContinueClicked: () -> Unit
+) {
+    val radioOptions = listOf("Daily", "Upcoming")
+    // Note that Modifier.selectableGroup() is essential to ensure correct accessibility behavior
+    Column(
+        modifier
+            .selectableGroup()
+            .background(
+                color = Color.White.copy(alpha = 1f),
+                shape = RoundedCornerShape(12.dp)
+            )
+    ) {
+        radioOptions.forEach { text ->
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+                    .selectable(
+                        selected = (text == selectedView.value),
+                        onClick = {
+                            selectedView.value = text
+                            onContinueClicked()
+                        },
+                        role = Role.RadioButton
+                    )
+                    .padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RadioButton(
+                    selected = (text == selectedView.value),
+                    onClick = null // null recommended for accessibility with screen readers
+                )
+                Text(
+                    text = text,
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.padding(start = 16.dp)
                 )
             }
         }
@@ -777,8 +883,9 @@ fun deleteDialog(
             )
             .padding(18.dp)
     ) {
+        val displayName = if (editName.value.replace("_", " ").trim() == "") editName.value else editName.value.replace("_", " ")
         Text(
-            text = "Delete ${editName.value}?",
+            text = "Delete ${displayName}?",
             style = MaterialTheme.typography.headlineSmall,
             modifier = Modifier.padding(bottom = 18.dp)
         )
@@ -793,7 +900,7 @@ fun deleteDialog(
                     .padding(end = 8.dp)
             ) {
                 Text(
-                    text = "Cancel",
+                    text = "Back",
                     style = MaterialTheme.typography.headlineSmall,
                     color = Color.White,
                     textAlign = TextAlign.Center
@@ -802,6 +909,8 @@ fun deleteDialog(
             Spacer(modifier = Modifier.width(8.dp))
             TextButton(
                 onClick = {
+                    Planner.zonedDate = workingDate.value
+                    FileManager.readFile(context)
                     Planner.tasks.removeAt(
                         Planner.getTaskIdx(
                             editName.value,
@@ -832,26 +941,26 @@ fun deleteDialog(
 
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DatePickerModal(
-    onDateSelected: (Long?) -> Unit,
-    onDismiss: () -> Unit
+fun OutlinedTextFieldBackground(
+    color: Color,
+    content: @Composable () -> Unit
 ) {
-    val datePickerState = rememberDatePickerState()
-
-    DatePickerDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {
-            TextButton(onClick = {
-                onDateSelected(datePickerState.selectedDateMillis)
-                onDismiss()
-            }) {
-                Text("OK")
-            }
-        },
-    ) {
-        DatePicker(state = datePickerState)
+    // This box just wraps the background and the OutlinedTextField
+    Box {
+        // This box works as background
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .padding(start = 8.dp, end = 8.dp, top = 16.dp, bottom = 8.dp) // adding some space to the label
+                .background(
+                    color,
+                    // rounded corner to match with the OutlinedTextField
+                    shape = RoundedCornerShape(4.dp)
+                )
+        )
+        // OutlineTextField will be the content...
+        content()
     }
 }
 
@@ -1043,7 +1152,11 @@ fun <T> CircularList(
 }
 
 @Composable
-fun Task(modifier: Modifier = Modifier, task: Task) {
+fun Task(
+    modifier: Modifier = Modifier,
+    task: Task,
+    date: String
+) {
     Button (
         onClick = {
             editName.value = task.name
@@ -1059,7 +1172,12 @@ fun Task(modifier: Modifier = Modifier, task: Task) {
             editEndXM.value = if (task.end >= HALF_HOURS * HOUR_DIV) "PM" else "AM"
             editNote.value = task.note
             editMode.value = true
-        }
+            workingDate.value = date
+        },
+        modifier = Modifier.background(
+            color = MaterialTheme.colorScheme.primary,
+            shape = RoundedCornerShape(12.dp)
+        )
     ) {
         Row(
             modifier = Modifier
@@ -1072,12 +1190,13 @@ fun Task(modifier: Modifier = Modifier, task: Task) {
                     .fillMaxWidth()
                     .padding(start = 4.dp)
                     .weight(1f),
-                style = MaterialTheme.typography.headlineMedium
+                style = MaterialTheme.typography.headlineSmall
             )
+            val time = Planner.convertNumToTime(task.start) + "-" + Planner.convertNumToTime(task.end)
             Text(
-                text = Planner.convertNumToTime(task.start) + "-" + Planner.convertNumToTime(task.end),
+                text = if (selectedView.value == "Daily") time else date,
                 modifier = Modifier.padding(end = 4.dp),
-                style = MaterialTheme.typography.headlineMedium
+                style = MaterialTheme.typography.headlineSmall
             )
         }
     }

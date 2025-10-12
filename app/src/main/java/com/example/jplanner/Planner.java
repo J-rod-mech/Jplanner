@@ -236,11 +236,7 @@ public class Planner {
         return -1;
     }
 
-    public static Task newTask(String name, String tag, int start, int end, String note) {
-        return new Task(name, tag, false, start, end, note);
-    }
-
-    public static void insertTask(String name, String tag, int start, int end) {
+    public static void insertTask(String name, String tag, int start, int end, String note) {
         int lo = 0;
         int hi = tasks.size() - 1;
         while (lo < hi) {
@@ -255,7 +251,7 @@ public class Planner {
         if (lo < tasks.size() && tasks.get(lo).getStart() <= start) {
             lo++;
         }
-        tasks.add(lo, new Task(name, tag, start, end));
+        tasks.add(lo, new Task(name, tag, false, start, end, note));
     }
 
     public static void insertTask(Task task) {
@@ -275,32 +271,6 @@ public class Planner {
             lo++;
         }
         tasks.add(lo, task);
-    }
-
-    public static void replaceTask(
-            int idx,
-            String newName,
-            String newTag,
-            int newStart,
-            int newEnd,
-            String newNote
-    ) {
-        tasks.remove(idx);
-        int lo = 0;
-        int hi = tasks.size() - 1;
-        while (lo < hi) {
-            int mid = lo + (hi - lo) / 2;
-            if (tasks.get(mid).getStart() > newStart) {
-                hi = mid;
-            }
-            else if (tasks.get(mid).getStart() <= newStart) {
-                lo = mid + 1;
-            }
-        }
-        if (lo < tasks.size() && tasks.get(lo).getStart() <= newStart) {
-            lo++;
-        }
-        tasks.add(lo, new Task(newName, newTag, false, newStart, newEnd, newNote));
     }
 
     public static void printSchedule() {
@@ -349,69 +319,6 @@ public class Planner {
         }
         if (isEmpty)
             System.out.println();
-    }
-
-    public static void printList(String tag) {
-        String list = "";
-        File dir = new File(directory + "/plannerdata/daily");
-        File[] directoryListing = dir.listFiles();
-        Arrays.sort(directoryListing);
-        if (directoryListing != null) {
-            for (int i = 0; i < directoryListing.length; i++) {
-                boolean match = false;
-                ArrayList<String> taskList = new ArrayList<String>();
-                String date = directoryListing[i].getName().substring(9,19);
-                if (!LocalDate.parse(date, myFormat).isBefore(ZonedDateTime.now(ZoneId.of(timeZone)).toLocalDate())) {
-                    try {
-                        Scanner fileSC = new Scanner(directoryListing[i]).useDelimiter("\n");
-                        while (fileSC.hasNext()) {
-                            Scanner lineSC = new Scanner(fileSC.next()).useDelimiter(DELIM);
-                            String in = lineSC.next();
-                            String in2 = lineSC.next();
-                            if (!Boolean.parseBoolean(lineSC.next()) && !taskList.contains(in) && (tag == null || tag.equals(in2))) {
-                                list += "[ ] " + date + ": " + in +
-                                        (!in2.equals(" ") ? " # " + in2 : "") + "\n";
-                                taskList.add(in + (!in2.equals(" ") ? DELIM + in2 : ""));
-                                match = true;
-                            }
-                            lineSC.close();
-                        }
-                        fileSC.close();
-                    }
-                    catch (Exception e) {
-                        System.out.println("Could not find schedule.");
-                    }
-
-                    try {
-                        Scanner fileSC = new Scanner(directoryListing[i]).useDelimiter("\n");
-                        while (fileSC.hasNext()) {
-                            Scanner lineSC = new Scanner(fileSC.next()).useDelimiter(DELIM);
-                            String in = lineSC.next();
-                            String in2 = lineSC.next();
-                            if (Boolean.parseBoolean(lineSC.next()) && !taskList.contains(in) && (tag == null || tag.equals(in2))) {
-                                list += "[X] " + date + ": " + in +
-                                        (!in2.equals(" ") ? " # " + in2 : "") + "\n";
-                                taskList.add(in + (!in2.equals(" ") ? DELIM + in2 : ""));
-                                match = true;
-                            }
-                            lineSC.close();
-                        }
-                        fileSC.close();
-                    }
-                    catch (Exception e) {
-                        System.out.println("Could not find schedule.");
-                    }
-
-                    if (taskList.size() > 0 && match) {
-                        list += "\n";
-                    }
-                }
-            }
-        } else {
-            System.out.println("Could not find schedules.");
-        }
-
-        System.out.print(list);
     }
 
     /*public static void main(String[] args) {
