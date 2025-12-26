@@ -4,8 +4,6 @@ import com.example.jplanner.R
 import android.R.attr.label
 import android.R.attr.text
 import android.os.Bundle
-import android.text.format.DateUtils
-import android.widget.Button
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -18,7 +16,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -37,22 +34,16 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.ui.platform.LocalContext
-import java.io.File
 import androidx.compose.material3.Surface
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -74,9 +65,10 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxColors
 import androidx.compose.material3.DatePickerState
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import com.example.jplanner.Planner.HALF_HOURS
@@ -84,13 +76,21 @@ import com.example.jplanner.Planner.HOUR_DIV
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.concurrent.TimeUnit
-import androidx.compose.material3.Icon
 import androidx.compose.material3.RadioButton
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
+import android.content.Intent
+import android.net.Uri
+import android.util.Log
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import androidx.documentfile.provider.DocumentFile
+import androidx.core.net.toUri
+import androidx.core.content.edit
 
+var root: DocumentFile? = null
 var editName = mutableStateOf("")
 var editStart = mutableStateOf(0)
 var editStartHour = mutableStateOf(12)
@@ -118,13 +118,79 @@ class MainActivity : ComponentActivity() {
         @JvmField
         val list = MyTasks()
     }
+
+    private val folderPicker =
+        registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+            if (uri != null) {
+                grantLongTermAccess(uri)
+
+                root = DocumentFile.fromTreeUri(this, uri)
+                Log.d("SAF", "Root set from picker: $root")
+            }
+        }
+
+    fun openFolderPicker() {
+        folderPicker.launch(null)
+    }
+
+    private fun grantLongTermAccess(treeUri: Uri) {
+        val flags = (Intent.FLAG_GRANT_READ_URI_PERMISSION
+                or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+
+        contentResolver.takePersistableUriPermission(treeUri, flags)
+
+        val prefs = getSharedPreferences("storage_prefs", MODE_PRIVATE)
+        prefs.edit { putString("tree_uri", treeUri.toString()) }
+    }
+
+    private fun loadRootFromPrefs() {
+        val prefs = getSharedPreferences("storage_prefs", MODE_PRIVATE)
+        val uriString = prefs.getString("tree_uri", null)
+
+        if (uriString == null) {
+            Log.d("SAF", "No saved URI")
+            root = null
+            return
+        }
+
+        val treeUri = uriString.toUri()
+
+        // Must re-take permissions or Android may block access
+        try {
+            contentResolver.takePersistableUriPermission(
+                treeUri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+        } catch (_: Exception) {
+            Log.d("SAF", "Permission already granted")
+        }
+
+        root = DocumentFile.fromTreeUri(this, treeUri)
+        Log.d("SAF", "Loaded root: $root")
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val prefs = getSharedPreferences("storage_prefs", MODE_PRIVATE)
+        val uriString = prefs.getString("tree_uri", null)
+        if (uriString == null) {
+            // go here if permissions aren't saved
+            openFolderPicker()
+        }
+        else {
+            // go here if permissions are saved
+            // openFolderPicker()
+            loadRootFromPrefs()
+        }
+        FileManager.verifyStoragePermissions(this)
+        if (root != null) {
+            FileManager.readFile(this, root)
+        }
         enableEdgeToEdge()
         setContent {
             JplannerTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    FileManager.readFile(this)
                     MyApp(
                         modifier = Modifier.padding(innerPadding),
                         myTasks = list
@@ -141,7 +207,6 @@ class MyTasks {
 
 @Composable
 fun MyApp(modifier: Modifier = Modifier, myTasks: MyTasks) {
-    val context = LocalContext.current
     var showAddTaskScreen by remember { mutableStateOf(false) }
     var showViewScreen by remember { mutableStateOf(false) }
 
@@ -193,7 +258,10 @@ fun MyApp(modifier: Modifier = Modifier, myTasks: MyTasks) {
                     },
                 contentAlignment = Alignment.Center
             ) {
-                ViewDialog(onContinueClicked = {showViewScreen = false})
+                ViewDialog(onContinueClicked = {
+                    Planner.zonedDate = currDate.value
+                    showViewScreen = false
+                })
             }
         }
     }
@@ -305,11 +373,20 @@ fun taskList(
         topBar = { topBar() }
     ) { innerPadding ->
         LazyColumn(
-            modifier = Modifier
-                .padding(paddingValues = innerPadding),
+            modifier = Modifier.padding(paddingValues = innerPadding),
         ) {
             if (selectedView.value == "Daily") {
-                items(items = myTasks.tasks) { task ->
+                val untickedTasks = SnapshotStateList<Task>()
+                val tickedTasks = SnapshotStateList<Task>()
+                myTasks.tasks.forEach { task ->
+                    if (task.isComplete) {
+                        tickedTasks.add(task)
+                    }
+                    else {
+                        untickedTasks.add(task)
+                    }
+                }
+                items(items = untickedTasks + tickedTasks, key = { it.toString() }) { task ->
                     Task(
                         task = task,
                         date = currDate.value
@@ -318,12 +395,12 @@ fun taskList(
                 }
             }
             else {
-                items(items = FileManager.upcomingList(context)) { dayTasks ->
+                items(items = FileManager.upcomingList(context, root)) { dayTasks ->
                     for (i in 1..<dayTasks.size) {
                         Task(
                             task = dayTasks[i],
                             date = dayTasks[0].name
-                            )
+                        )
                         Spacer(modifier = Modifier.height(2.dp))
                     }
                     Spacer(modifier = Modifier.height(6.dp))
@@ -385,9 +462,11 @@ fun topBar(
                 .padding(top = if (selectedView.value == "Daily") 8.dp else 24.dp)
         ) {
             if (selectedView.value == "Daily") {
+                val format = SimpleDateFormat("MM-dd-yyyy", Locale.getDefault())
+                val newDate = format.parse(currDate.value)
                 MaterialDatePicker(
                     placeholderText = "",
-                    selectedDateMillis = selectedDate.value,
+                    selectedDateMillis = newDate.time,
                     onDateSelected = { date ->
                         selectedDate.value = date
                         currDate.value = (date.plus(TimeUnit.DAYS.toMillis(1))).let {
@@ -395,7 +474,7 @@ fun topBar(
                         }
                         workingDate.value = currDate.value
                         Planner.zonedDate = currDate.value
-                        FileManager.readFile(context)
+                        FileManager.readFile(context, root)
                     },
                 )
             }
@@ -417,8 +496,8 @@ fun EditTaskScreen(
     newEndXM: String = if (newStartHour != 11) newStartXM else "PM",
     newNote: String = ""
     ) {
+    val context = LocalContext.current
     Surface() {
-        val context = LocalContext.current
         var name by remember { mutableStateOf(newName) }
         name = if (name.replace("_", " ").trim() == "") name else name.replace("_", " ")
         var startHour by remember { mutableStateOf(newStartHour) }
@@ -672,17 +751,18 @@ fun EditTaskScreen(
                 )
             }
             Spacer(modifier = Modifier.padding(bottom = 12.dp))
-
+            val format = SimpleDateFormat("MM-dd-yyyy", Locale.getDefault())
+            val newDate = format.parse(currDate.value)
             MaterialDatePicker(
                 placeholderText = "Date",
-                selectedDateMillis = selectedDate.value,
+                selectedDateMillis = if (editMode.value) selectedDate.value else newDate.time,
                 onDateSelected = { date ->
                     workingDate.value = (date.plus(TimeUnit.DAYS.toMillis(1))).let {
                         formatDate(it) }
                 },
             )
             Spacer(modifier = Modifier.height(4.dp))
-            OutlinedTextFieldBackground(Color.White) {
+            OutlinedTextFieldBackground(MaterialTheme.colorScheme.onPrimary) {
                 OutlinedTextField(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -740,7 +820,7 @@ fun EditTaskScreen(
                     Text(
                         text = "Back",
                         style = MaterialTheme.typography.headlineSmall,
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.onPrimary,
                         textAlign = TextAlign.Center
                     )
                 }
@@ -755,22 +835,23 @@ fun EditTaskScreen(
                             val fName = name.trim().replace(" ", "_")
                             val fNote = if (note.trim() == "") " " else note.trim()
                             if (editMode.value) {
-                                Planner.tasks.removeAt(
-                                    Planner.getTaskIdx(
-                                        editName.value,
-                                        editStart.value,
-                                        editEnd.value
-                                    )
+                                FileManager.readFile(context, root)
+                                val index = Planner.getTaskIdx(
+                                    editName.value,
+                                    editStart.value,
+                                    editEnd.value
                                 )
-                                FileManager.writeFile(context)
+                                System.out.println("moving at $index")
+                                Planner.tasks.removeAt(index)
+                                FileManager.writeFile(context, root)
                             }
                             Planner.zonedDate = workingDate.value
-                            FileManager.readFile(context)
+                            FileManager.readFile(context, root)
                             Planner.insertTask(fName, " ", start, end, fNote)
-                            FileManager.writeFile(context)
+                            FileManager.writeFile(context, root)
                             workingDate.value = currDate.value
                             Planner.zonedDate = currDate.value
-                            FileManager.readFile(context)
+                            FileManager.readFile(context, root)
                             onContinueClicked()
                         }
                         else {
@@ -815,7 +896,7 @@ fun EditTaskScreen(
                     onContinueClicked = {
                         workingDate.value = currDate.value
                         Planner.zonedDate = currDate.value
-                        FileManager.readFile(context)
+                        FileManager.readFile(context, root)
                         confirmDelete = false
                     }
                 )
@@ -829,6 +910,7 @@ fun ViewDialog(
     modifier: Modifier = Modifier,
     onContinueClicked: () -> Unit
 ) {
+    val context = LocalContext.current
     val radioOptions = listOf("Daily", "Upcoming")
     // Note that Modifier.selectableGroup() is essential to ensure correct accessibility behavior
     Column(
@@ -848,6 +930,7 @@ fun ViewDialog(
                         selected = (text == selectedView.value),
                         onClick = {
                             selectedView.value = text
+                            FileManager.readFile(context, root)
                             onContinueClicked()
                         },
                         role = Role.RadioButton
@@ -910,15 +993,19 @@ fun deleteDialog(
             TextButton(
                 onClick = {
                     Planner.zonedDate = workingDate.value
-                    FileManager.readFile(context)
-                    Planner.tasks.removeAt(
-                        Planner.getTaskIdx(
+                    FileManager.readFile(context, root)
+                    val index = Planner.getTaskIdx(
                             editName.value,
-                            editStart.value,
-                            editEnd.value
-                        )
+                    editStart.value,
+                    editEnd.value
                     )
-                    FileManager.writeFile(context)
+                    System.out.println("removing at $index")
+                    Planner.tasks.removeAt(index)
+                    System.out.println("size: ${Planner.tasks.size}")
+                    FileManager.writeFile(context, root)
+                    System.out.println("reading...")
+                    FileManager.readFile(context, root)
+                    System.out.println("size: ${Planner.tasks.size}")
                     onContinueClicked()
                     editMode.value = false
                           },
@@ -1157,6 +1244,8 @@ fun Task(
     task: Task,
     date: String
 ) {
+    val context = LocalContext.current
+    var isChecked by remember { mutableStateOf(task.isComplete) }
     Button (
         onClick = {
             editName.value = task.name
@@ -1171,32 +1260,87 @@ fun Task(
             editEndMin.value = task.end % HOUR_DIV
             editEndXM.value = if (task.end >= HALF_HOURS * HOUR_DIV) "PM" else "AM"
             editNote.value = task.note
-            editMode.value = true
+            val format = SimpleDateFormat("MM-dd-yyyy", Locale.getDefault())
+            val newDate = format.parse(date)
+            selectedDate.value = newDate.time
+            Planner.zonedDate = date
             workingDate.value = date
+            editMode.value = true
         },
-        modifier = Modifier.background(
-            color = MaterialTheme.colorScheme.primary,
-            shape = RoundedCornerShape(12.dp)
-        )
-    ) {
+        colors = ButtonDefaults.outlinedButtonColors(
+            containerColor = if (isChecked) Color.LightGray else MaterialTheme.colorScheme.primary,
+            contentColor = if (isChecked) Color.DarkGray else Color.White
+        ),
+        shape = RoundedCornerShape(12.dp))
+     {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(8.dp)
         ) {
+            Checkbox(
+                checked = isChecked,
+                onCheckedChange = {
+                    editName.value = task.name
+                    editStart.value = task.start
+                    editStartHour.value = (task.start % (HALF_HOURS * HOUR_DIV)) / HOUR_DIV
+                    editStartHour.value = if (editStartHour.value > 0) editStartHour.value else 12
+                    editStartMin.value = task.start % HOUR_DIV
+                    editStartXM.value = if (task.start >= HALF_HOURS * HOUR_DIV) "PM" else "AM"
+                    editEnd.value = task.end
+                    editEndHour.value = (task.end % (HALF_HOURS * HOUR_DIV)) / HOUR_DIV
+                    editEndHour.value = if (editEndHour.value > 0) editEndHour.value else 12
+                    editEndMin.value = task.end % HOUR_DIV
+                    editEndXM.value = if (task.end >= HALF_HOURS * HOUR_DIV) "PM" else "AM"
+                    editNote.value = task.note
+                    isChecked = !isChecked
+                    if (isChecked) {
+                        task.tick()
+                    }
+                    else {
+                        task.untick()
+                    }
+                    Planner.zonedDate = date
+                    FileManager.readFile(context, root)
+                    val index = Planner.getTaskIdx(
+                        editName.value,
+                        editStart.value,
+                        editEnd.value
+                    )
+                    System.out.println("ticking at $index")
+                    Planner.tasks.removeAt(index)
+                    Planner.insertTask(task)
+                    FileManager.writeFile(context, root)
+                    Planner.zonedDate = currDate.value
+                },
+                colors = CheckboxColors(
+                    checkedCheckmarkColor = Color.DarkGray,
+                    uncheckedCheckmarkColor = Color.White,
+                    checkedBoxColor = Color.LightGray,
+                    uncheckedBoxColor = MaterialTheme.colorScheme.primary,
+                    disabledCheckedBoxColor = Color.DarkGray,
+                    disabledUncheckedBoxColor = Color.DarkGray,
+                    disabledIndeterminateBoxColor = Color.DarkGray,
+                    checkedBorderColor = Color.DarkGray,
+                    uncheckedBorderColor = Color.White,
+                    disabledBorderColor = Color.White,
+                    disabledUncheckedBorderColor = Color.White,
+                    disabledIndeterminateBorderColor = Color.White
+                )
+            )
             Text(
                 text = if (task.name.replace("_", " ").trim() == "") task.name else task.name.replace("_", " "),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(start = 4.dp)
                     .weight(1f),
-                style = MaterialTheme.typography.headlineSmall
+                style = MaterialTheme.typography.bodyMedium
             )
             val time = Planner.convertNumToTime(task.start) + "-" + Planner.convertNumToTime(task.end)
             Text(
                 text = if (selectedView.value == "Daily") time else date,
                 modifier = Modifier.padding(end = 4.dp),
-                style = MaterialTheme.typography.headlineSmall
+                style = MaterialTheme.typography.bodyMedium
             )
         }
     }

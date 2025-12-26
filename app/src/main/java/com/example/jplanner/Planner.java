@@ -108,30 +108,6 @@ public class Planner {
     static String zonedDate = ZonedDateTime.now(ZoneId.of(timeZone)).format(myFormat);
     static SnapshotStateList<Task> tasks = MainActivity.list.getTasks();
 
-    public static Task testFunc1(String str) {
-        return new Task(str, "", 1, 2);
-    }
-    public static void testFunc2(Context context) {
-        tasks.add(new Task("test", " ", 1, 2));
-        File dir = new File(context.getFilesDir(), "daily");
-        if (!dir.exists()) {
-            dir.mkdirs();
-        }
-        try {
-            File file = new File(dir, "bloop.txt");
-            if (file.createNewFile()) {
-                tasks.add(new Task("succ", " ", 1, 2));
-            }
-            else {
-                tasks.add(new Task("fail", " ", 1, 2));
-            }
-        }
-        catch (Exception e) {
-            StringWriter errors = new StringWriter();
-            e.printStackTrace(new PrintWriter(errors));
-            tasks.add(new Task(errors.toString(), " ", 0, 3));
-        }
-    }
     public static boolean inputEquals(String in, String command, int amt) {
         if (command.length() < amt) {
             return false;

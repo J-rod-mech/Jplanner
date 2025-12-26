@@ -56,6 +56,8 @@ public class Task {
         this.complete = true;
     }
 
+    public void untick() { this.complete = false; }
+
     public void setTime(int start, int end) {
         this.start = start;
         this.end = end;

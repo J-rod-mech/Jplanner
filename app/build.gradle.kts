@@ -56,4 +56,6 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+    implementation("androidx.appcompat:appcompat:1.7.1")
+    implementation("androidx.documentfile:documentfile:1.1.0")
 }
