@@ -60,24 +60,18 @@ public class FileManager {
         }
     }
     public static void readFile(Context context, DocumentFile folder) {
-        System.out.println("start read");
         String fileName = "taskdata_" + Planner.zonedDate + ".txt";
         DocumentFile targetFile = folder.findFile(fileName);
         if (targetFile == null || !targetFile.exists()) {
-            targetFile = folder.createFile("text/plain", fileName);
-            if (targetFile == null) {
-                Log.e("SAF", "Failed to create file (read)");
-                Log.d("SAF", "canWrite = " + folder.canWrite());
-                Log.d("SAF", "isDirectory = " + folder.isDirectory());
-                Log.d("SAF", "exists = " + folder.exists());
-                return;
-            }
             return;
         }
 
         try (InputStream is = context.getContentResolver().openInputStream(targetFile.getUri())) {
             Scanner fileSC = new Scanner(is).useDelimiter("\n");
             Planner.tasks.clear();
+            for (int i = 0; i < 4 && fileSC.hasNext(); i++) {
+                fileSC.next();
+            }
             while (fileSC.hasNext()) {
                 Scanner lineSC = new Scanner(fileSC.next()).useDelimiter(DELIM);
                 String name = lineSC.next();
@@ -102,6 +96,7 @@ public class FileManager {
         String fileName = "taskdata_" + Planner.zonedDate + ".txt";
         DocumentFile targetFile = folder.findFile(fileName);
 
+        StringBuilder out = new StringBuilder();
         if (targetFile == null || !targetFile.exists()) {
             targetFile = folder.createFile("text/plain", fileName);
             if (targetFile == null) {
@@ -111,24 +106,38 @@ public class FileManager {
                 Log.d("SAF", "exists = " + folder.exists());
                 return;
             }
+            out.append("0\n0\n0\n0");
+            System.out.println("new out: " + out);
+        }
+        else {
+            try (InputStream is = context.getContentResolver().openInputStream(targetFile.getUri())) {
+                Scanner fileSC = new Scanner(is).useDelimiter("\n");
+                String chunk = "";
+                for (int i = 0; i < 4 && fileSC.hasNext(); i++) {
+                    chunk += fileSC.next();
+                    if (i < 3) chunk += "\n";
+                }
+                out.append(chunk);
+                fileSC.close();
+            }
+            catch (Exception e) {
+                Log.e("I/O", "error writing set values");
+            }
+            System.out.println("old out: " + out);
         }
 
-        System.out.println("writing...");
         try (OutputStream os = context.getContentResolver().openOutputStream(targetFile.getUri(), "wt")) {
-            StringBuilder out = new StringBuilder();
             for (Task t : Planner.tasks) {
                 out.append("\n").append(t.getName()).append(DELIM).append(t.getTag()).append(DELIM)
                         .append(t.isComplete()).append(DELIM).append(t.getStart()).append(DELIM)
                         .append(t.getEnd()).append(DELIM).append(t.getNote());
             }
             os.write(out.toString().getBytes());
-            System.out.println("wrote: " + out.toString());
         }
         catch (IOException e) {
             StringWriter error = new StringWriter();
             e.printStackTrace(new PrintWriter(error));
         }
-        System.out.println("end write");
     }
 
     public static ArrayList<ArrayList<Task>> upcomingList(Context context, DocumentFile folder) {
