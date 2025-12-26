@@ -63,6 +63,7 @@ public class FileManager {
         String fileName = "taskdata_" + Planner.zonedDate + ".txt";
         DocumentFile targetFile = folder.findFile(fileName);
         if (targetFile == null || !targetFile.exists()) {
+            Planner.tasks.clear();
             return;
         }
 
@@ -176,6 +177,9 @@ public class FileManager {
                     Scanner fileSC = new Scanner(is).useDelimiter("\n");
                     dayTasks.add(new Task(files[i].getName().substring(9,19), " ", 0, 1));
                     Planner.tasks.clear();
+                    for (int j = 0; j < 4 && fileSC.hasNext(); j++) {
+                        fileSC.next();
+                    }
                     while (fileSC.hasNext()) {
                         Scanner lineSC = new Scanner(fileSC.next()).useDelimiter(DELIM);
                         dayTasks.add(new Task(lineSC.next(),
