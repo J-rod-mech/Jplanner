@@ -815,7 +815,6 @@ fun EditTaskScreen(
                             color = Color.LightGray,
                             shape = RoundedCornerShape(25.dp)
                         )
-                        .padding(end = 8.dp)
                 ) {
                     Text(
                         text = "Back",
@@ -980,7 +979,6 @@ fun deleteDialog(
                         color = Color.LightGray,
                         shape = RoundedCornerShape(25.dp)
                     )
-                    .padding(end = 8.dp)
             ) {
                 Text(
                     text = "Back",
@@ -1011,10 +1009,9 @@ fun deleteDialog(
                           },
                 modifier = Modifier
                     .background(
-                        color = Color.Red,
+                        color = Color(0xFFF06292),
                         shape = RoundedCornerShape(25.dp)
                     )
-                    .padding(end = 8.dp)
             ) {
                 Text(
                     text = "Delete",
