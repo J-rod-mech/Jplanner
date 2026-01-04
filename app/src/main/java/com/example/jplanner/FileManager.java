@@ -148,14 +148,18 @@ public class FileManager {
         DocumentFile[] files = folder.listFiles();
 
         Arrays.sort(files, (a, b) -> {
-            String nameA = a.getName();
-            String nameB = b.getName();
+            String dateA = a.getName().substring(9,19);
+            String dateB = b.getName().substring(9,19);
 
-            if (nameA == null && nameB == null) return 0;
-            if (nameA == null) return -1;
-            if (nameB == null) return 1;
-
-            return nameA.compareToIgnoreCase(nameB);
+            if (dateA == null && dateB == null) return 0;
+            if (dateA == null) return -1;
+            if (dateB == null) return 1;
+            if (LocalDate.parse(dateA, myFormat).isBefore(LocalDate.parse(dateB, myFormat))) {
+                return -1;
+            }
+            else {
+                return 1;
+            }
         });
 
         if (files != null) {
